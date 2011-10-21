@@ -1,0 +1,298 @@
+#!/usr/bin/env python
+
+'''
+  vinyl - a record processing suite (lite version)
+'''
+
+import getopt
+import traceback
+import re
+import string
+
+
+def main( argv, fin, fout, ferr ):
+
+  reader_params = { 'delim': string.whitespace, 'fields': 'line' }
+  writer_params = { 'delim': ' ' }
+  skip = 0
+  count = -1
+  begincode = None
+  mapcode = None
+  endcode = None
+  codeglobals = { 'g': Object() }
+  aggregate = None
+  specialvars = False
+  force = False
+  verbosity = 0
+
+  opts, args = getopt.getopt(argv[1:], 'r:w:R:W:s:c:e:B:E:A:Sfvq')
+
+  for o, a in opts:
+    if o == '-R':
+      (k,v) = a.split('=')
+      reader_params[k] = v
+    elif o == '-W':
+      (k,v) = a.split('=')
+      writer_params[k] = v
+    elif o == '-s':
+      skip = int(a)
+    elif o == '-c':
+      count = int(a)
+    elif o == '-e':
+      mapcode = compile(a,"-e '%s'" % a,'exec')
+    elif o == '-B':
+      begincode = compile(a,"-B '%s'" % a,'exec')
+    elif o == '-E':
+      endcode = compile(a,"-E '%s'" % a,'exec')
+    elif o == '-A':
+      aggregate = a
+    elif o == '-S':
+      specialvars = True
+    elif o == '-f':
+      force = True
+    elif o == '-v':
+      verbosity += 1
+    elif o == '-q':
+      verbosity -= 1
+
+  if len(args): fin = file(shift(args))
+  if len(args): fout = file(shift(args), 'w')
+
+  if not 'fields' in writer_params:
+    writer_params['fields'] = reader_params['fields']
+
+
+  # set up the reader / writer pair
+
+  reader_codec = TextCodec( **reader_params )
+  reader = LineReader( fin, reader_codec )
+
+  writer_codec = TextCodec( **writer_params )
+  writer = LineWriter( fout, writer_codec )
+
+
+  # emit() can be called from within -e, -B, -E code
+
+  def emit(record):
+    if force:
+      try: writer.write( record )
+      except IOError, e:
+        print >> ferr, traceback.format_exc()
+        return None
+      except Exception, e:
+        print >> ferr, traceback.format_exc()
+        return 0
+    else:
+      writer.write( record )
+    return 1
+
+
+  codeglobals['emit'] = emit
+
+
+  # the body of code executed on every record, factored out here
+  # so that exceptions can optionally be suppressed.
+
+  def process(record, aggregator):
+
+    # optionally set special vars
+
+    if specialvars:
+      record['_RECORD'] = dict(record.items())
+      record['_RAW'] = reader.current_raw
+      record['_NUMBER'] = reader.current_number
+      record['_OFFSET'] = reader.current_offset
+      record['_LENGTH'] = reader.current_length
+
+    # in aggregate mode (-A key), run -B and -E code at key boundaries
+
+    if aggregate != None:
+      record['_SKIP'] = True
+      p = record
+      for k in aggregate.split("."):
+        p = p.get(k, None)
+        if p == None: break
+      key = p
+      if aggregator.lastkey != None and key != aggregator.lastkey:
+        if endcode != None: exec endcode in codeglobals, aggregator.lastrecord
+        if aggregator.lastrecord != None: emit(aggregator.lastrecord)
+        codeglobals['g'] = Object()
+        if begincode != None: exec begincode in codeglobals
+      aggregator.lastkey = key
+      aggregator.lastrecord = record
+
+    # execute the map code on every record
+
+    if mapcode != None:
+      exec mapcode in codeglobals, record
+
+
+  written = 0
+  aggregator = Object()
+  aggregator.lastkey = None
+  aggregator.lastrecord = None
+
+  if begincode != None:
+    exec begincode in codeglobals
+
+  # record reading loop
+
+  for record in reader:
+
+    # skip to first record
+
+    if reader.current_number < skip:
+      continue
+
+    # stop after <count> records
+
+    if count >= 0 and written >= count:
+      break
+
+    if verbosity >= 1:
+      print >> ferr, "%d" % reader.current_number
+
+    # process the record, suppressing exceptions if -f was specified.
+
+    if force:
+      try: process(record, aggregator)
+      except Exception, e:
+        print >> ferr, traceback.format_exc()
+        continue
+    else:
+      process(record, aggregator)
+
+    # if the map code sets the special variable _SKIP, emit nothing
+
+    if record.get('_SKIP', False):
+      continue
+
+    emitted = emit(record)
+
+    if emitted == None:
+      break
+    elif emitted == 0:
+      continue
+
+    written += 1
+
+
+  if endcode != None and reader.current_number > 0:
+    exec endcode in codeglobals
+
+  return 0
+
+
+class LineReader:
+
+  def __init__(self, f, codec):
+    self.f = f
+    self.codec = codec
+    self.current_number = 0
+    self.current_offset = 0
+    self.current_length = 0
+
+  def __iter__(self):
+
+    eof = False
+
+    while not eof:
+      record = self.read()
+      if record == None:
+        eof = True
+      else:
+        yield record
+
+  def read(self):
+
+    line = self.read_raw()
+    if line == None: return None
+    self.current_record = self.codec.decode( line )
+    return self.current_record
+
+  def read_raw(self):
+
+    self.current_offset += self.current_length
+    self.current_length = None
+    self.current_record = None
+    self.current_raw = None
+
+    line = self.f.readline()
+    if line == "": return None
+    length = len(line)
+    line = line.rstrip('\r\n')
+
+    self.current_raw = line
+    self.current_number += 1
+    self.current_length = length
+
+    return self.current_raw
+
+
+class LineWriter:
+
+  def __init__(self, f, codec):
+    self.f = f
+    self.codec = codec
+
+  def write(self, record):
+    line = self.codec.encode( record )
+    return self.write_raw(line)
+
+  def write_raw(self, raw):
+    print >> self.f, raw
+    return len(raw)
+
+
+class TextCodec:
+
+  def __init__(self, fields=None, delim=None):
+
+    if delim == None:
+      self.splitter = re.compile(r'\s+')
+      self.delim = ' '
+    else:
+      self.splitter = re.compile('['+delim+']+')
+      self.delim = delim
+
+    if isinstance(fields, str):
+      fields = fields.split(',')
+
+    self.fields = fields
+
+  def encode(self, record):
+
+    values = []
+
+    for k in self.fields:
+      v = str(record.get(k, ""))
+      values.append(v)
+
+    data = self.delim.join(values)
+    return data
+
+  def decode(self, data):
+
+    fields = self.fields
+    maxsplit = len(fields)-1
+    if maxsplit < 0: maxsplit = 0
+    values = self.splitter.split(data.rstrip('\r\n'), maxsplit)
+    record = {}
+
+    for i in xrange(len(values)):
+      i = min(i,len(fields)-1)
+      k = fields[i]
+      record[k] = values[i]
+
+    return record
+
+
+class Object(object): pass   # FIXME
+
+def shift(L): e = L[0] ; del L[0:1] ; return e
+
+
+if __name__ == '__main__':
+  import sys
+  sys.exit( main( sys.argv, sys.stdin, sys.stdout, sys.stderr ) )
+
