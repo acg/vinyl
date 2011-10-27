@@ -103,16 +103,13 @@ def main( argv, fin, fout, ferr ):
       record['_NUMBER'] = reader.current_number
       record['_OFFSET'] = reader.current_offset
       record['_LENGTH'] = reader.current_length
+      record[''] = ''
 
     # in aggregate mode (-A key), run -B and -E code at key boundaries
 
     if aggregate != None:
       record['_SKIP'] = True
-      p = record
-      for k in aggregate.split("."):
-        p = p.get(k, None)
-        if p == None: break
-      key = p
+      key = record.get(aggregate,None)
       if aggregator.lastkey != None and key != aggregator.lastkey:
         if endcode != None: exec endcode in codeglobals, aggregator.lastrecord
         emit(aggregator.lastrecord)
