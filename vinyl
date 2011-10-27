@@ -115,7 +115,7 @@ def main( argv, fin, fout, ferr ):
       key = p
       if aggregator.lastkey != None and key != aggregator.lastkey:
         if endcode != None: exec endcode in codeglobals, aggregator.lastrecord
-        if aggregator.lastrecord != None: emit(aggregator.lastrecord)
+        emit(aggregator.lastrecord)
         codeglobals['g'] = Object()
         if begincode != None: exec begincode in codeglobals
       aggregator.lastkey = key
@@ -130,7 +130,7 @@ def main( argv, fin, fout, ferr ):
   written = 0
   aggregator = Object()
   aggregator.lastkey = None
-  aggregator.lastrecord = None
+  aggregator.lastrecord = {}
 
   if begincode != None:
     exec begincode in codeglobals
@@ -177,8 +177,9 @@ def main( argv, fin, fout, ferr ):
     written += 1
 
 
-  if endcode != None and reader.current_number > 0:
-    exec endcode in codeglobals
+  if endcode != None:
+    exec endcode in codeglobals, aggregator.lastrecord
+    if aggregate != None: emit(aggregator.lastrecord)
 
   return 0
 
