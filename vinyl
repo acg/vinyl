@@ -109,7 +109,9 @@ def main( argv, fin, fout, ferr ):
 
     if aggregate != None:
       record['_SKIP'] = True
-      key = record.get(aggregate,None)
+      key = []
+      for a in aggregate.split(','):
+        key.append(record.get(a,None))
       if aggregator.lastkey != None and key != aggregator.lastkey:
         if endcode != None: exec endcode in codeglobals, aggregator.lastrecord
         emit(aggregator.lastrecord)
