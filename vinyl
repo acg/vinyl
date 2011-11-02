@@ -4,6 +4,7 @@
   vinyl - a record processing suite (lite version)
 '''
 
+import os
 import getopt
 import traceback
 import re
@@ -22,10 +23,11 @@ def main( argv, fin, fout, ferr ):
   codeglobals = { 'g': Object() }
   aggregate = None
   specialvars = False
+  partkey = None
   force = False
   verbosity = 0
 
-  opts, args = getopt.getopt(argv[1:], 'r:w:R:W:s:c:e:B:E:A:Sfvq')
+  opts, args = getopt.getopt(argv[1:], 'r:w:R:W:s:c:e:B:E:A:p:Sfvq')
 
   for o, a in opts:
     if o == '-R':
@@ -48,6 +50,8 @@ def main( argv, fin, fout, ferr ):
       aggregate = a
     elif o == '-S':
       specialvars = True
+    elif o == '-p':
+      partkey = a
     elif o == '-f':
       force = True
     elif o == '-v':
@@ -68,12 +72,24 @@ def main( argv, fin, fout, ferr ):
   reader = LineReader( fin, reader_codec )
 
   writer_codec = TextCodec( **writer_params )
-  writer = LineWriter( fout, writer_codec )
+  writers = { '': LineWriter( fout, writer_codec ) }
 
 
   # emit() can be called from within -e, -B, -E code
 
   def emit(record):
+
+    # if partitioning is enabled, find or create a writer by
+    # the partition key. by default use '' => stdout.
+
+    path = record.get(partkey,'') if partkey else ''
+
+    if not path in writers:
+      f = file( '%s.tmp' % path, 'w' )
+      writers[path] = LineWriter( f, writer_codec )
+
+    writer = writers[path]
+
     if force:
       try: writer.write( record )
       except IOError, e:
@@ -84,6 +100,7 @@ def main( argv, fin, fout, ferr ):
         return 0
     else:
       writer.write( record )
+
     return 1
 
 
@@ -179,6 +196,14 @@ def main( argv, fin, fout, ferr ):
   if endcode != None:
     exec endcode in codeglobals, aggregator.lastrecord
     if aggregate != None: emit(aggregator.lastrecord)
+
+
+  # close all the writers. there are potentially multiple if partitioning (-p)
+
+  for path, writer in writers.items():
+    tmpname = writer.f.name
+    writer.f.close()
+    if path != '': os.rename(tmpname, path)
 
   return 0
 
