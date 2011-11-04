@@ -65,7 +65,7 @@ def main( argv, fin, fout, ferr ):
   if len(args): fin = file(shift(args))
   if len(args): fout = file(shift(args), 'w')
 
-  for o in ['fields','headers']:
+  for o in ['fields','headers','delim']:
     if o in reader_params and not o in writer_params:
       writer_params[o] = reader_params[o]
 
@@ -212,7 +212,7 @@ class LineReader:
   def __init__(self, f, codec, **options):
     self.f = f
     self.codec = codec
-    self.headers = options.get('headers',False)
+    self.headers = int(options.get('headers',0))
     self.headers_done = False
     self.current_number = 0
     self.current_offset = 0
@@ -270,7 +270,7 @@ class LineWriter:
   def __init__(self, f, codec, **options):
     self.f = f
     self.codec = codec
-    self.headers = options.get('headers',False)
+    self.headers = int(options.get('headers',0))
     self.headers_done = False
     self.current_number = 0
 
