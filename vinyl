@@ -24,10 +24,11 @@ def main( argv, fin, fout, ferr ):
   aggregate = None
   specialvars = False
   partkey = None
+  partfile = "%s"
   force = False
   verbosity = 0
 
-  opts, args = getopt.getopt(argv[1:], 'r:w:R:W:s:c:e:B:E:A:p:Sfvq')
+  opts, args = getopt.getopt(argv[1:], 'r:w:R:W:s:c:e:B:E:A:p:P:Sfvq')
 
   for o, a in opts:
     if o == '-R':
@@ -52,6 +53,8 @@ def main( argv, fin, fout, ferr ):
       specialvars = True
     elif o == '-p':
       partkey = a
+    elif o == '-P':
+      partfile = a
     elif o == '-f':
       force = True
     elif o == '-v':
@@ -82,13 +85,13 @@ def main( argv, fin, fout, ferr ):
     # if partitioning is enabled, find or create a writer by
     # the partition key. by default use '' => stdout.
 
-    path = record.get(partkey,'') if partkey else ''
+    part = record.get(partkey,'') if partkey else ''
 
-    if not path in writers:
-      f = file( '%s.tmp' % path, 'w' )
-      writers[path] = LineWriter( f, writer_codec )
+    if not part in writers:
+      f = file( '%s.tmp' % (partfile % part), 'w' )
+      writers[part] = LineWriter( f, writer_codec, **writer_params )
 
-    writer = writers[path]
+    writer = writers[part]
 
     if force:
       try: writer.write( record )
@@ -143,13 +146,14 @@ def main( argv, fin, fout, ferr ):
       exec mapcode in codeglobals, record
 
 
-  written = 0
   aggregator = Object()
   aggregator.lastkey = None
   aggregator.lastrecord = {}
 
   if begincode != None:
     exec begincode in codeglobals
+
+  processed = 0
 
   # record reading loop
 
@@ -160,9 +164,9 @@ def main( argv, fin, fout, ferr ):
     if reader.current_number < skip:
       continue
 
-    # stop after <count> records
+    # stop after processing <count> records
 
-    if count >= 0 and written >= count:
+    if count >= 0 and processed >= count:
       break
 
     if verbosity >= 1:
@@ -183,14 +187,8 @@ def main( argv, fin, fout, ferr ):
     if record.get('_SKIP', False):
       continue
 
+    processed += 1
     emitted = emit(record)
-
-    if emitted == None:
-      break
-    elif emitted == 0:
-      continue
-
-    written += 1
 
 
   if endcode != None:
@@ -200,10 +198,10 @@ def main( argv, fin, fout, ferr ):
 
   # close all the writers. there are potentially multiple if partitioning (-p)
 
-  for path, writer in writers.items():
+  for part, writer in writers.items():
     tmpname = writer.f.name
     writer.f.close()
-    if path != '': os.rename(tmpname, path)
+    if part != '': os.rename(tmpname, partfile % part)
 
   return 0
 
@@ -259,6 +257,7 @@ class LineWriter:
   def __init__(self, f, codec):
     self.f = f
     self.codec = codec
+    self.current_number = 0
 
   def write(self, record):
     line = self.codec.encode( record )
@@ -266,6 +265,7 @@ class LineWriter:
 
   def write_raw(self, raw):
     print >> self.f, raw
+    self.current_number += 1
     return len(raw)
 
 
