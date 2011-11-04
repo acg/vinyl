@@ -13,7 +13,7 @@ import string
 
 def main( argv, fin, fout, ferr ):
 
-  reader_params = { 'delim': string.whitespace, 'fields': 'line' }
+  reader_params = { 'delim': string.whitespace, 'fields': ['line'] }
   writer_params = { 'delim': ' ' }
   skip = 0
   count = -1
@@ -65,17 +65,18 @@ def main( argv, fin, fout, ferr ):
   if len(args): fin = file(shift(args))
   if len(args): fout = file(shift(args), 'w')
 
-  if not 'fields' in writer_params:
-    writer_params['fields'] = reader_params['fields']
+  for o in ['fields','headers']:
+    if o in reader_params and not o in writer_params:
+      writer_params[o] = reader_params[o]
 
 
   # set up the reader / writer pair
 
   reader_codec = TextCodec( **reader_params )
-  reader = LineReader( fin, reader_codec )
+  reader = LineReader( fin, reader_codec, **reader_params )
 
   writer_codec = TextCodec( **writer_params )
-  writers = { '': LineWriter( fout, writer_codec ) }
+  writers = { '': LineWriter( fout, writer_codec, **writer_params ) }
 
 
   # emit() can be called from within -e, -B, -E code
@@ -208,9 +209,11 @@ def main( argv, fin, fout, ferr ):
 
 class LineReader:
 
-  def __init__(self, f, codec):
+  def __init__(self, f, codec, **options):
     self.f = f
     self.codec = codec
+    self.headers = options.get('headers',False)
+    self.headers_done = False
     self.current_number = 0
     self.current_offset = 0
     self.current_length = 0
@@ -223,15 +226,25 @@ class LineReader:
       record = self.read()
       if record == None:
         eof = True
+      elif record == False:
+        continue
       else:
         yield record
 
   def read(self):
 
     line = self.read_raw()
-    if line == None: return None
-    self.current_record = self.codec.decode( line )
-    return self.current_record
+
+    if line == None:
+      return None
+    elif not self.headers_done and self.headers:
+      self.codec.decode_schema(line)
+      self.current_number -= 1
+      self.headers_done = True
+      return False
+    else:
+      self.current_record = self.codec.decode( line )
+      return self.current_record
 
   def read_raw(self):
 
@@ -254,12 +267,21 @@ class LineReader:
 
 class LineWriter:
 
-  def __init__(self, f, codec):
+  def __init__(self, f, codec, **options):
     self.f = f
     self.codec = codec
+    self.headers = options.get('headers',False)
+    self.headers_done = False
     self.current_number = 0
 
   def write(self, record):
+
+    if not self.headers_done and self.headers:
+      line = self.codec.encode_schema()
+      self.write_raw(line)
+      self.current_number -= 1
+      self.headers_done = True
+
     line = self.codec.encode( record )
     return self.write_raw(line)
 
@@ -271,7 +293,7 @@ class LineWriter:
 
 class TextCodec:
 
-  def __init__(self, fields=None, delim=None):
+  def __init__(self, fields=None, delim=None, **options):
 
     if delim == None:
       self.splitter = re.compile(r'\s+')
@@ -310,6 +332,17 @@ class TextCodec:
       record[k] = values[i]
 
     return record
+
+  def encode_schema(self):
+
+    data = self.delim.join(self.fields)
+    return data
+
+  def decode_schema(self, data):
+
+    self.fields[:] = []
+    self.fields.extend( self.splitter.split(data.rstrip('\r\n')) )
+
 
 
 class Object(object): pass   # FIXME
