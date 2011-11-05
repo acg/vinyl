@@ -322,7 +322,7 @@ class TextCodec:
 
     fields = self.fields
     maxsplit = len(fields)-1
-    if maxsplit < 0: maxsplit = 0
+    if maxsplit <= 0: maxsplit = -1
     values = self.splitter.split(data.rstrip('\r\n'), maxsplit)
     record = {}
 
