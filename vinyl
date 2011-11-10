@@ -326,10 +326,8 @@ class TextCodec:
     values = self.splitter.split(data.rstrip('\r\n'), maxsplit)
     record = {}
 
-    for i in xrange(len(values)):
-      i = min(i,len(fields)-1)
-      k = fields[i]
-      record[k] = values[i]
+    for i in xrange(len(fields)):
+      record[fields[i]] = values[i] if i<len(values) else ""
 
     return record
 
