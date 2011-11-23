@@ -20,7 +20,8 @@ def main( argv, fin, fout, ferr ):
   begincode = None
   mapcode = None
   endcode = None
-  codeglobals = { 'g': Object() }
+  gparam = {}
+  codeglobals = {}
   aggregate = None
   specialvars = False
   partkey = None
@@ -28,7 +29,7 @@ def main( argv, fin, fout, ferr ):
   force = False
   verbosity = 0
 
-  opts, args = getopt.getopt(argv[1:], 'r:w:R:W:s:c:e:B:E:A:p:P:Sfvq')
+  opts, args = getopt.getopt(argv[1:], 'r:w:R:W:s:c:g:e:B:E:A:p:P:Sfvq')
 
   for o, a in opts:
     if o == '-R':
@@ -41,6 +42,9 @@ def main( argv, fin, fout, ferr ):
       skip = int(a)
     elif o == '-c':
       count = int(a)
+    elif o == '-g':
+      (k,v) = a.split('=')
+      gparam[k] = v
     elif o == '-e':
       mapcode = compile(a,"-e '%s'" % a,'exec')
     elif o == '-B':
@@ -108,6 +112,8 @@ def main( argv, fin, fout, ferr ):
     return 1
 
 
+
+  codeglobals['g'] = Object(**gparam)
   codeglobals['emit'] = emit
 
 
@@ -136,7 +142,7 @@ def main( argv, fin, fout, ferr ):
       if aggregator.lastkey != None and key != aggregator.lastkey:
         if endcode != None: exec endcode in codeglobals, aggregator.lastrecord
         emit(aggregator.lastrecord)
-        codeglobals['g'] = Object()
+        codeglobals['g'] = Object(**gparam)
         if begincode != None: exec begincode in codeglobals
       aggregator.lastkey = key
       aggregator.lastrecord = record
@@ -343,7 +349,10 @@ class TextCodec:
 
 
 
-class Object(object): pass   # FIXME
+class Object(object):
+  def __init__(self, **kwargs):
+    for k,v in kwargs.items():
+      setattr(self,k,v)
 
 def shift(L): e = L[0] ; del L[0:1] ; return e
 
