@@ -302,10 +302,10 @@ class TextCodec:
   def __init__(self, fields=None, delim=None, **options):
 
     if delim == None:
-      self.splitter = re.compile(r'\s+')
+      self.splitter = re.compile(r'\s')
       self.delim = ' '
     else:
-      self.splitter = re.compile('['+delim+']+')
+      self.splitter = re.compile('['+delim+']')
       self.delim = delim
 
     if isinstance(fields, str):
