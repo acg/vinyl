@@ -125,7 +125,7 @@ def main( argv, fin, fout, ferr ):
     # optionally set special vars
 
     if specialvars:
-      record['_RECORD'] = dict(record.items())
+      record['_IN'] = dict(record.items())
       record['_RAW'] = reader.current_raw
       record['_NUMBER'] = reader.current_number
       record['_OFFSET'] = reader.current_offset
@@ -151,6 +151,8 @@ def main( argv, fin, fout, ferr ):
 
     if mapcode != None:
       exec mapcode in codeglobals, record
+      record.update(record.get('_OUT',{}))
+
 
 
   aggregator = Object()
