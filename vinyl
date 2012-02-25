@@ -17,6 +17,7 @@ def main( argv, fin, fout, ferr ):
   writer_params = { 'delim': ' ' }
   skip = 0
   count = -1
+  bootcode = None
   begincode = None
   mapcode = None
   endcode = None
@@ -29,7 +30,7 @@ def main( argv, fin, fout, ferr ):
   force = False
   verbosity = 0
 
-  opts, args = getopt.getopt(argv[1:], 'r:w:R:W:s:c:g:e:B:E:A:p:P:Sfvq')
+  opts, args = getopt.getopt(argv[1:], 'r:w:R:W:s:c:g:e:b:B:E:A:p:P:Sfvq')
 
   for o, a in opts:
     if o == '-R':
@@ -47,6 +48,8 @@ def main( argv, fin, fout, ferr ):
       gparam[k] = v
     elif o == '-e':
       mapcode = compile(a,"-e '%s'" % a,'exec')
+    elif o == '-b':
+      bootcode = compile(a,"-b '%s'" % a,'exec')
     elif o == '-B':
       begincode = compile(a,"-B '%s'" % a,'exec')
     elif o == '-E':
@@ -168,6 +171,9 @@ def main( argv, fin, fout, ferr ):
   aggregator = Object()
   aggregator.lastkey = None
   aggregator.lastrecord = {}
+
+  if bootcode != None:
+    exec bootcode in codeglobals
 
   if begincode != None:
     exec begincode in codeglobals
