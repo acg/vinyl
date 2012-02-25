@@ -83,34 +83,44 @@ def main( argv, fin, fout, ferr ):
   writers = { '': LineWriter( fout, writer_codec, **writer_params ) }
 
 
-  # emit() can be called from within -e, -B, -E code
+  # output a record.
+  # emit() can be called explicitly from within -e, -B, -E code.
+  # if the record contains the special variable _OUT, output that instead.
+  # if _OUT is a list, output each element in the list as a record.
 
   def emit(record):
 
-    # if partitioning is enabled, find or create a writer by
-    # the partition key. by default use '' => stdout.
+    out = record.get('_OUT', record)
+    if not isinstance(out, list): out = [out]
+    nout = 0
 
-    part = record.get(partkey,'') if partkey else ''
+    for o in out:
 
-    if not part in writers:
-      f = file( '%s.tmp' % (partfile % part), 'w' )
-      writers[part] = LineWriter( f, writer_codec, **writer_params )
+      # if partitioning is enabled, find or create a writer by
+      # the partition key. by default use '' => stdout.
 
-    writer = writers[part]
+      part = o.get(partkey,'') if partkey else ''
 
-    if force:
-      try: writer.write( record )
-      except IOError, e:
-        print >> ferr, traceback.format_exc()
-        return None
-      except Exception, e:
-        print >> ferr, traceback.format_exc()
-        return 0
-    else:
-      writer.write( record )
+      if not part in writers:
+        f = file( '%s.tmp' % (partfile % part), 'w' )
+        writers[part] = LineWriter( f, writer_codec, **writer_params )
 
-    return 1
+      writer = writers[part]
 
+      if force:
+        try: writer.write( o )
+        except IOError, e:
+          print >> ferr, traceback.format_exc()
+          return None
+        except Exception, e:
+          print >> ferr, traceback.format_exc()
+          return 0
+      else:
+        writer.write( o )
+
+      nout += 1
+
+    return nout
 
 
   codeglobals['g'] = Object(**gparam)
@@ -141,9 +151,7 @@ def main( argv, fin, fout, ferr ):
         key.append(record.get(a,None))
       if aggregator.lastkey != None and key != aggregator.lastkey:
         if endcode != None: exec endcode in codeglobals, aggregator.lastrecord
-        out = aggregator.lastrecord.get('_OUT', aggregator.lastrecord)
-        if not isinstance(out, list): out = [out]
-        [emit(o) for o in out]
+        emit(aggregator.lastrecord)
         codeglobals['g'] = Object(**gparam)
         if begincode != None: exec begincode in codeglobals
       aggregator.lastkey = key
