@@ -333,6 +333,7 @@ class TextCodec:
       self.splitter = re.compile(r'\s')
       self.delim = ' '
     else:
+      delim = delim.decode('string_escape')
       self.splitter = re.compile('['+delim+']')
       self.delim = delim
 
