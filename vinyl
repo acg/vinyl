@@ -30,7 +30,7 @@ def main( argv, fin, fout, ferr ):
   force = False
   verbosity = 0
 
-  opts, args = getopt.getopt(argv[1:], 'r:w:R:W:s:c:g:e:b:B:E:A:p:P:Sfvq')
+  opts, args = getopt.getopt(argv[1:], 'r:w:R:W:t:T:k:K:s:c:g:e:b:B:E:A:p:P:Sfvq')
 
   for o, a in opts:
     if o == '-R':
@@ -39,6 +39,14 @@ def main( argv, fin, fout, ferr ):
     elif o == '-W':
       (k,v) = a.split('=')
       writer_params[k] = v
+    elif o == '-t':
+      reader_params['delim'] = a
+    elif o == '-T':
+      writer_params['delim'] = a
+    elif o == '-k':
+      reader_params['fields'] = a
+    elif o == '-K':
+      writer_params['fields'] = a
     elif o == '-s':
       skip = int(a)
     elif o == '-c':
@@ -71,6 +79,8 @@ def main( argv, fin, fout, ferr ):
 
   if len(args): fin = file(shift(args))
   if len(args): fout = file(shift(args), 'w')
+
+  # default writer params to reader params.
 
   for o in ['fields','headers','delim']:
     if o in reader_params and not o in writer_params:
